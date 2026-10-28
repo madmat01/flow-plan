@@ -1,0 +1,9 @@
+{
+  "name": "flow-plan",
+  "version": "0.8.0",
+  "description": "A design gate for Power Automate flows built by Claude Code: Claude proposes the flow as a plan in a sidebar, flags licensing and design problems, and the build tools stay blocked until you approve that flow's plan.",
+  "types": "./types/index.d.ts",
+  "author": { "name": "Matt Collinge" },
+  "license": "MIT",
+  "keywords": ["power-automate", "power-platform", "cloud-flows", "mod", "approval", "design-review"]
+}

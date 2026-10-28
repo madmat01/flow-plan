@@ -1,0 +1,8 @@
+{
+  "name": "flow-plan",
+  "owner": { "name": "Matt Collinge" },
+  "description": "flow-plan: a plan-and-approve gate for Power Automate flows built with Claude Code.",
+  "plugins": [
+    { "name": "flow-plan", "source": "./" }
+  ]
+}
