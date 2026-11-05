@@ -29,6 +29,12 @@ export const patchVersion = (plans: Plans, key: string, index: number, patch: Pa
 export const setStatus = (plans: Plans, key: string, index: number, status: FlowPlan['status']): Plans =>
   patchVersion(plans, key, index, { status })
 
+// Adds warning rule ids to a version's acknowledged list, once each.
+export const acknowledge = (plans: Plans, key: string, index: number, ids: readonly string[]): Plans =>
+  patchVersion(plans, key, index, {
+    acknowledged: [...new Set([...(plans[key]?.[index]?.acknowledged ?? []), ...ids])],
+  })
+
 // Approve the drawn version. isNew: this press moved the latest version from pending or rejected to approved.
 // A built version stays built: its approval was used up by create_flow.
 export const approve = (plans: Plans, key: string, index: number) => {

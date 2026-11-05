@@ -104,8 +104,10 @@ export const lint = (plan: Plan): Finding[] => {
       ),
     )
 
+  // An update plan may list only the changed actions, so it can't show the flow's existing Try/Catch.
   const hasTryCatch =
-    scopes.some(v => named(v.node, 'try')) && catches.some(v => RUN_AFTER_FAILURE.test(v.node.runAfter ?? ''))
+    plan.target.mode === 'update' ||
+    (scopes.some(v => named(v.node, 'try')) && catches.some(v => RUN_AFTER_FAILURE.test(v.node.runAfter ?? '')))
   const noTryCatch = hasTryCatch
     ? []
     : [
@@ -158,7 +160,8 @@ export const lint = (plan: Plan): Finding[] => {
         ]
       : []
 
-  const isChild = [plan.title, plan.target.mode === 'create' ? plan.target.name : ''].some(t => /^\[child\]/i.test(t.trim()))
+  // Like PA-NO-TRY-CATCH, only a create plan shows every path.
+  const isChild = plan.target.mode === 'create' && [plan.title, plan.target.name].some(t => /^\[child\]/i.test(t.trim()))
   const childNoRespond = isChild
     ? ends(plan.nodes, 'nodes')
         .filter(e => {

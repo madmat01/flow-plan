@@ -3,6 +3,7 @@ import type { EngineInterface, Register, StateDollar } from 'claude-code'
 
 import type { Finding, FlowPlan, PlanNode, Tier } from '../types'
 import {
+  acknowledge,
   afterBuild,
   appendPlan,
   approve,
@@ -23,6 +24,8 @@ import { connectorsOf, knownTier, lookupVerdict, tierNote, tierOf, withTiers } f
 import type { ConnectorRow } from './lib/tiers'
 
 const PANE = 'flow-plan'
+// A whole reply that only approves: "approve", "approved", "I approve it", "approve the plan".
+const CHAT_APPROVE = /^\s*(i\s+)?approved?(\s+(it|this|the plan|this plan))?\s*[.!]*\s*$/i
 const TOOL = 'mcp__flow-plan__propose_flow_plan'
 const plans = atom({ plugin: 'flow-plan', key: 'plans' } as const, {})
 const active = atom({ plugin: 'flow-plan', key: 'active' } as const, null)
@@ -126,6 +129,9 @@ const lookUpTiers = async ($: EngineInterface, connectors: readonly string[], en
   )
 }
 
+// A blocked-Approve notice goes stale once what blocked it changes.
+const clearBlocked = (n: string | null) => (n?.startsWith('Approve blocked') === true ? null : n)
+
 // Latest version of the plan on show.
 const latest = async ($: StateDollar) => {
   const key = await read($, active)
@@ -190,6 +196,26 @@ export const register: Register = on => {
         },
       ],
     }
+  })
+
+  // replying "approve" in chat approves the plan on show and accepts its warnings; an invalid finding still blocks.
+  on('prompt.submit', async ($, e, next) => {
+    if (!CHAT_APPROVE.test(e.text)) return next(e)
+    const shown = await latest($)
+    if (shown === null || shown.plan.status !== 'pending') return next(e)
+    const { key, index, plan } = shown
+    const findings = [...(plan.findings ?? []), ...licenceFindings(plan, await read($, licence))]
+    const invalid = findings.filter(f => f.severity === 'invalid')
+    if (invalid.length > 0) {
+      const why = `Flow plan "${plan.title}" was not approved: ${invalid.length} finding(s) must be fixed first (${invalid.map(f => f.id).join(', ')}). Fix them and propose again.`
+      return next({ ...e, context: [...(e.context ?? []), why] })
+    }
+    await update($, plans, all =>
+      approve(acknowledge(all, key, index, findings.map(f => f.id)), key, index).plans,
+    )
+    await update($, notice, () => null)
+    const ok = `Flow plan "${plan.title}" approved in chat for ${targetLabel(plan.target)}. Build it now.`
+    return next({ ...e, context: [...(e.context ?? []), ok] })
   })
 
   // the plan tool writes nothing outside the session, so no mode (plan mode included) refuses it;
@@ -287,11 +313,11 @@ export const register: Register = on => {
       : `The plan pane is not shown (${opened.reason}). Ask the user to run /flow-plan to open it.`
     return {
       result: [
-        `${shown} Wait for the user to approve; building is blocked until they do.`,
+        `${shown} Wait for the user to approve (Approve in the sidebar, or reply "approve" in chat); building is blocked until they do.`,
         ...(findings.length === 0
           ? []
           : [
-              'Findings (fix invalid ones and propose again; warnings block Approve until the user acknowledges them with the Acknowledge warnings button):',
+              'Findings (fix invalid ones and propose again; approving, in the sidebar or by replying "approve" in chat, accepts the warnings):',
               ...findings.map(f => `- ${f.severity} ${f.id} at ${f.path}: ${f.message}`),
             ]),
       ].join('\n'),
@@ -363,7 +389,8 @@ export const register: Register = on => {
     const isOpen = (f: Finding) => f.severity === 'invalid' || !acked.includes(f.id)
     const invalid = findings.filter(f => f.severity === 'invalid')
     const unacked = findings.filter(f => f.severity === 'warn' && !acked.includes(f.id))
-    const isBlocked = invalid.length > 0 || unacked.length > 0
+    // only invalid findings block; Approve accepts the open warnings in the same press.
+    const isBlocked = invalid.length > 0
     const icon = (f: Finding) => (f.severity === 'invalid' ? '✖' : isOpen(f) ? '⚠' : '✓')
 
     // the rule ids of the open findings at this step of the plan.
@@ -536,9 +563,7 @@ export const register: Register = on => {
     const blockedBy =
       licensed > 0
         ? `Approve blocked: ${licensed} premium or custom connector(s) in standard licence mode. Switch the mode (l) or change the design.`
-        : invalid.length > 0
-          ? `Approve blocked: ${invalid.length} finding(s) must be fixed (✖). Change the design and propose it again.`
-          : `Approve blocked: ${unacked.length} warning(s) not acknowledged. Click Acknowledge warnings, or change the design.`
+        : `Approve blocked: ${invalid.length} finding(s) must be fixed (✖). Change the design and propose it again.`
 
     const isRejecting = await read($, rejecting)
 
@@ -561,7 +586,7 @@ export const register: Register = on => {
     }
 
     // only a press that newly approves the latest version (pending or rejected before) tells the session.
-    // an invalid finding blocks Approve until it's fixed; a warning until it's acknowledged.
+    // an invalid finding blocks Approve until it's fixed; open warnings are acknowledged by the press.
     const onApprove = async () => {
       if (isBlocked) {
         await update($, notice, () => blockedBy)
@@ -569,7 +594,7 @@ export const register: Register = on => {
       }
       let isNew = false
       await update($, plans, all => {
-        const out = approve(all, key, index)
+        const out = approve(acknowledge(all, key, index, unacked.map(f => f.id)), key, index)
         isNew = out.isNew
         return out.plans
       })
@@ -634,7 +659,13 @@ export const register: Register = on => {
         <Box>
           <Button
             key="approve"
-            label={isBlocked ? 'Approve (blocked)' : 'Approve'}
+            label={
+              isBlocked
+                ? 'Approve (blocked)'
+                : unacked.length > 0
+                  ? `Approve (accepts ${unacked.length} warning(s))`
+                  : 'Approve'
+            }
             variant="primary"
             dimColor={isBlocked}
             onPress={onApprove}
@@ -643,13 +674,10 @@ export const register: Register = on => {
             <Button
               key="acknowledge"
               label={`Acknowledge warnings (${unacked.length})`}
-              onPress={() =>
-                update($, plans, all =>
-                  patchVersion(all, key, index, {
-                    acknowledged: [...new Set([...(all[key]?.[index]?.acknowledged ?? []), ...unacked.map(f => f.id)])],
-                  }),
-                )
-              }
+              onPress={async () => {
+                await update($, plans, all => acknowledge(all, key, index, unacked.map(f => f.id)))
+                await update($, notice, clearBlocked)
+              }}
             />
           )}
           <Button
@@ -670,7 +698,10 @@ export const register: Register = on => {
           <Button
             key="licence"
             label={`Licence: ${licenceMode}`}
-            onPress={() => update($, licence, m => (m === 'standard' ? 'premium' : 'standard'))}
+            onPress={async () => {
+              await update($, licence, m => (m === 'standard' ? 'premium' : 'standard'))
+              await update($, notice, clearBlocked)
+            }}
           />
         </Box>
         {isRejecting && Input !== undefined && (

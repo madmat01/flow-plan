@@ -99,9 +99,19 @@ export const lookupVerdict = <V extends LookupVerdict>(beneath: V, isOwnRead: bo
     ? beneath
     : { decision: 'allow' }
 
+// A tool error's message alone, when it arrives as JSON ({ "code", "message" }).
+const plainError = (text: string) => {
+  try {
+    const message = (JSON.parse(text) as { message?: unknown } | null)?.message
+    return typeof message === 'string' ? message : text
+  } catch {
+    return text
+  }
+}
+
 // The pane's quiet note when the lookup fails: one line, cut short.
 export const tierNote = (reason: string) => {
-  const line = reason.split('\n')[0]?.trim() ?? ''
+  const line = plainError(reason).split('\n')[0]?.trim() ?? ''
   const cut = line.length > 160 ? `${line.slice(0, 157)}...` : line
   return `Connector tiers not looked up, so badges show ?. ${cut}`.trim()
 }

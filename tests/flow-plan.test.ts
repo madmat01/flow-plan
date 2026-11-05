@@ -148,7 +148,6 @@ test(
     }
 
     const ui = await $.ui.mount({ plugin: 'flow-plan', surface: 'terminal', ...PANE })
-    await ui.press({ key: 'acknowledge' })
     await ui.press({ key: 'approve' })
     expect(await ui.find({ type: 'Text', text: '[approved]' })).toBeDefined()
     await ui.unmount()
@@ -389,9 +388,8 @@ const approvals = async ($: Engine, on: On, answer: (text: string) => Promise<un
   })
   const p = plan('Fix approvals', Y)
   await $.tool.call(proposal(p))
+  // An update plan has no design warnings, so Approve is ready at once.
   const ui = await $.ui.mount({ plugin: 'flow-plan', surface: 'terminal', ...PANE })
-  // The plan has no Try/Catch: its design warning is acknowledged so Approve isn't blocked.
-  await ui.press({ key: 'acknowledge' })
   return { sent, ui }
 }
 
@@ -765,6 +763,9 @@ describe('the tier lookup in every permission mode', () => {
   test('the quiet note is one short line', async () => {
     expect(tierNote('denied\nIssue the action again')).toBe('Connector tiers not looked up, so badges show ?. denied')
     expect(tierNote('x'.repeat(300)).length).toBeLessThan(220)
+    expect(tierNote('{"code":"Forbidden","message":"no access to env-1"}')).toBe(
+      'Connector tiers not looked up, so badges show ?. no access to env-1',
+    )
   })
 })
 
@@ -906,10 +907,9 @@ test('through the engine: standard mode blocks Approve until the mode changes', 
   ).toBeDefined()
 
   await pane.press({ key: 'licence' })
-  // Premium mode clears the licence findings; the plan's no-Try/Catch warning still needs k.
-  expect((await pane.find({ key: 'approve' }))?.props.label).toBe('Approve (blocked)')
-  await pane.press({ key: 'acknowledge' })
-  expect((await pane.find({ key: 'approve' }))?.props.label).toBe('Approve')
+  // Premium mode clears the licence findings and the stale blocked line; Approve accepts the open warnings.
+  expect(await pane.find({ type: 'Text', text: /^Approve blocked/ })).toBeUndefined()
+  expect((await pane.find({ key: 'approve' }))?.props.label).toMatch(/^Approve \(accepts \d+ warning\(s\)\)$/)
   await pane.press({ key: 'approve' })
   expect(await status()).toBe('approved')
   expect(sent.length).toBe(1)
@@ -992,6 +992,8 @@ describe('design checks', () => {
     expect(found(noRunAfter)).toEqual(['PA-NO-TRY-CATCH@nodes', 'PA-CATCH-RUNAFTER@nodes[1]'])
     const successOnly = shape([scope('Try', [step('Send an email')]), scope('Catch', [step('Terminate')], 'is successful')])
     expect(found(successOnly)).toEqual(['PA-NO-TRY-CATCH@nodes', 'PA-CATCH-RUNAFTER@nodes[1]'])
+    // an update plan may list only the changed actions, so it isn't asked for a Try/Catch.
+    expect(found(shape([step('Send an email')], { target: Y }))).toEqual([])
   })
 
   test('PA-LIST-NO-FILTER: only with node details, and only without a filter or select', async () => {
@@ -1021,6 +1023,8 @@ describe('design checks', () => {
     ])
     expect(found(child([scope('Try', [step('Send an email')]), scope('Catch', [respond, step('Terminate')], 'has failed'), respond]))).toEqual([])
     expect(found(shape([...TRY_CATCH, step('Compose', 'result')]))).toEqual([])
+    // an update plan's paths aren't the whole flow's, so a [child] update isn't checked.
+    expect(found({ ...child([...TRY_CATCH, step('Compose', 'result')]), target: Y })).toEqual([])
   })
 })
 
@@ -1046,7 +1050,7 @@ test('through the engine: Terminate inside Apply to each blocks Approve and k ca
   expect(stored?.status).toBe('pending')
 })
 
-test('through the engine: a nested loop can be approved only after Acknowledge warnings', { plugins: [probe] }, async ($, on) => {
+test('through the engine: Approve accepts a nested-loop warning in one press; Acknowledge still works alone', { plugins: [probe] }, async ($, on) => {
   on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
   on('ui.render', async () => h('Text', null, 'engine') as never)
   on('prompt.submit', async (_$, e) => ({ text: e.text }) as never)
@@ -1059,20 +1063,23 @@ test('through the engine: a nested loop can be approved only after Acknowledge w
   // The desktop draws the designer style as one Svg, so the node marker is inside its source.
   const canvas = async () => String((await pane.find({ type: 'Svg' }))?.props.source ?? '')
   expect(await canvas()).toContain('⚠ PA-NESTED-LOOP')
-  await pane.press({ key: 'approve' })
-  expect(await status()).toBe('pending')
-  expect(
-    await pane.find({ type: 'Text', text: 'Approve blocked: 1 warning(s) not acknowledged. Click Acknowledge warnings, or change the design.' }),
-  ).toBeDefined()
-
+  expect((await pane.find({ key: 'approve' }))?.props.label).toBe('Approve (accepts 1 warning(s))')
   expect((await pane.find({ key: 'acknowledge' }))?.props.label).toBe('Acknowledge warnings (1)')
   await pane.press({ key: 'acknowledge' })
   expect(await canvas()).not.toContain('⚠ PA-NESTED-LOOP')
   expect(await pane.find({ type: 'Text', text: /^✓ Apply to each is nested inside Apply to each/ })).toBeDefined()
   expect((await pane.find({ key: 'approve' }))?.props.label).toBe('Approve')
-  await pane.press({ key: 'approve' })
-  expect(await status()).toBe('approved')
+  expect(await status()).toBe('pending')
   await pane.unmount()
+
+  // a fresh version: one Approve press acknowledges the warning and approves.
+  await $.tool.call(proposal(p))
+  const again = await $.ui.mount({ plugin: 'flow-plan', surface: 'desktop', ...PANE })
+  await again.press({ key: 'approve' })
+  const latest = ((await read($, 'plans')) as Record<string, FlowPlan[]>)[flowKey(p.target)]?.at(-1)
+  expect(latest?.status).toBe('approved')
+  expect(latest?.acknowledged).toEqual(['PA-NESTED-LOOP'])
+  await again.unmount()
 })
 
 const versionY = async ($: Engine) => ((await read($, 'plans')) as Record<string, FlowPlan[]>)[flowKey(Y)]?.[0]
@@ -1153,12 +1160,58 @@ test('/flow-plan opens the pane focused; a proposal opens it without focus', asy
   expect(opens[1]?.focus).toBeUndefined()
 })
 
+// The pane's Approve can fail to reach the session, so replying "approve" in chat approves too.
+test('replying "approve" approves the pending plan, acknowledging its warnings', { plugins: [probe] }, async ($, on) => {
+  on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
+  on('tool.call', { tool: LIST }, async (_$, e) => catalog(e))
+  const seen: { text: string; context?: readonly string[] }[] = []
+  on('prompt.submit', async (_$, e) => {
+    seen.push({ text: e.text, context: e.context })
+    return { text: e.text } as never
+  })
+  const target: PlanTarget = { mode: 'create', name: 'Expiry Notice' }
+  await $.tool.call(proposal(plan('Expiry notice', target)))
+  const stored = async () => ((await read($, 'plans')) as Record<string, FlowPlan[]>)[flowKey(target)]?.[0]
+
+  await $.prompt.submit({ text: 'approve the flow and also rename it' } as never)
+  expect((await stored())?.status).toBe('pending')
+  expect(seen[0]?.context).toBeUndefined()
+
+  await $.prompt.submit({ text: 'Approve.' } as never)
+  expect((await stored())?.status).toBe('approved')
+  expect((await stored())?.acknowledged).toEqual(['PA-NO-TRY-CATCH'])
+  expect(seen[1]?.text).toBe('Approve.')
+  expect(seen[1]?.context).toEqual(['Flow plan "Expiry notice" approved in chat for New flow: Expiry Notice. Build it now.'])
+
+  // Already approved: a second "approve" passes through untouched.
+  await $.prompt.submit({ text: 'approve' } as never)
+  expect(seen[2]?.context).toBeUndefined()
+})
+
+test('replying "approve" does not approve a plan with an invalid finding', { plugins: [probe] }, async ($, on) => {
+  on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
+  const seen: (readonly string[] | undefined)[] = []
+  on('prompt.submit', async (_$, e) => {
+    seen.push(e.context)
+    return { text: e.text } as never
+  })
+  const target: PlanTarget = { mode: 'create', name: 'Loop stop' }
+  const loopStop = {
+    ...plan('Loop stop', target),
+    nodes: [{ action: 'Apply to each', connector: 'Control', short: 'rows', branches: [{ label: 'Body', nodes: [{ action: 'Terminate', short: 'stop' }] }] }],
+  }
+  await $.tool.call(proposal(loopStop))
+  await $.prompt.submit({ text: 'approve' } as never)
+  expect(((await read($, 'plans')) as Record<string, FlowPlan[]>)[flowKey(target)]?.[0]?.status).toBe('pending')
+  expect(seen[0]?.[0]).toMatch(/^Flow plan "Loop stop" was not approved: 1 finding\(s\) must be fixed first \(PA-TERMINATE-IN-LOOP\)/)
+})
+
 test('a proposal whose pane waits undrawn tells the model to ask for /flow-plan', async ($, on) => {
   const reason = 'opened unasked under 144 columns (100 now)'
   let isPlaced = false
   on('ui.open', async () => ({ value: isPlaced ? { isPlaced } : { isPlaced, reason } }) as never)
   on('tool.call', { tool: LIST }, async (_$, e) => catalog(e))
-  const WAIT = 'Wait for the user to approve; building is blocked until they do.'
+  const WAIT = 'Wait for the user to approve (Approve in the sidebar, or reply "approve" in chat); building is blocked until they do.'
 
   const hidden = await $.tool.call(proposal(plan('Expiry notice', X)))
   expect(String(hidden.result).split('\n')[0]).toBe(

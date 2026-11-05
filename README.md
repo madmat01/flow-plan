@@ -26,10 +26,10 @@ flow-plan puts a design review in between. Claude proposes the flow as a plan in
 - **Approval per flow.** Each plan names the one flow it's for: a new flow by name, or an existing flow by ID. Approving it allows builds for that flow only. Every other create, update, edit or copy is blocked with a reason Claude can act on. With more than one flow in a session, ◀ and ▶ in the pane step between them.
 - **Single-use create approval.** Once a new flow is created, the approval is used up. A second create with the same name needs a new plan. Updates to the flow just created stay allowed.
 - **Flow link after the build.** After a successful create, update or edit, the pane and Claude both get the maker-portal link to the flow's details page.
-- **Approve and Reject that talk to Claude.** Approve tells Claude it can build now. Reject takes an optional reason, and Claude gets it, so it can revise the plan.
+- **Approve and Reject that talk to Claude.** Approve tells Claude it can build now. You can also reply "approve" in chat, which approves the plan on show. Reject takes an optional reason, and Claude gets it, so it can revise the plan.
 - **Licensing badges.** Connector tiers come from the Power Automate plugin's connector list, not from Claude's memory. Premium and custom connectors get a badge, and the plan shows which licence its trigger kind needs.
 - **Standard licence mode.** Switch to standard and any premium or custom step blocks Approve until you change the design or the mode.
-- **Design checks.** Eight rules run on every plan. **Invalid** findings must be fixed and re-proposed. **Warnings** block Approve until you acknowledge them.
+- **Design checks.** Eight rules run on every plan. **Invalid** findings must be fixed and re-proposed. **Warnings** are shown on the plan, and approving accepts them. `PA-NO-TRY-CATCH` and `PA-CHILD-NO-RESPOND` skip update plans, which may list only the changed actions.
 - **Node details.** Data actions carry their inputs and the target site, list or table. HTTP request triggers say who can call them. A Details button shows it all in the pane.
 - **Works in Plan mode.** Proposing a plan writes nothing outside the session, so it's allowed in Claude's Plan mode. Building still isn't.
 - **Tells Claude when you can't see it.** If the sidebar isn't on screen, the tool result tells Claude to ask you to run `/flow-plan`.
@@ -72,8 +72,8 @@ Claude proposes the plan, the sidebar opens with it, and Claude stops. Review it
 | Button | What it does |
 |---|---|
 | **◀ / ▶** | Shown when the session has plans for more than one flow: steps between them. "Flow n of m" says where you are and how many others are pending |
-| **Approve** | Approves this version of the plan and tells Claude to build. Dimmed as **Approve (blocked)** while there are unfixed findings |
-| **Acknowledge warnings (n)** | Accepts the plan's warnings so it can be approved |
+| **Approve** | Approves this version of the plan and tells Claude to build. Reads **Approve (accepts n warning(s))** while warnings are open, and one press accepts them. Dimmed as **Approve (blocked)** while there are invalid findings |
+| **Acknowledge warnings (n)** | Accepts the plan's warnings without approving |
 | **Reject** | Opens a reason box. Press Enter to send it to Claude, or press Reject again to cancel |
 | **Details** | Shows each node's inputs, expressions, variables and notes |
 | **Style** | Switches between designer and cards |
@@ -99,11 +99,11 @@ Claude proposes the plan, the sidebar opens with it, and Claude stops. Review it
 | `hooks/lib/lint.ts` | The design checks |
 | `hooks/lib/flow-svg.ts` | The designer picture for Desktop, VS Code and mobile |
 | `types/index.d.ts` | Types for plans and the mod's state |
-| `tests/flow-plan.test.ts` | 73 unit tests |
+| `tests/flow-plan.test.ts` | 75 unit tests |
 
 ## Status
 
-Version 0.8.0. **73 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve.
+Version 0.8.0. **75 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve.
 
 Not yet checked live: the premium badge on an HTTP request trigger, the Details and Style buttons, and the designer picture in the light theme.
 
