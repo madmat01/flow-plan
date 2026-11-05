@@ -103,7 +103,7 @@ Claude proposes the plan, the sidebar opens with it, and Claude stops. Review it
 
 ## Status
 
-Version 0.8.0. **75 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve.
+Version 0.8.0. **75 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve. Live-checked in Claude Code Desktop on 2026-11-05: the ◀ ▶ arrows across two flow plans, connector tier badges in auto mode, and approving with the button or by replying "approve" in chat.
 
 Not yet checked live: the premium badge on an HTTP request trigger, the Details and Style buttons, and the designer picture in the light theme.
 
