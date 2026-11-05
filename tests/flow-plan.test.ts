@@ -12,6 +12,7 @@ import {
   parseFlowId,
   planFor,
   setStatus,
+  stepFlow,
 } from '../hooks/lib/plans'
 import type { Plans } from '../hooks/lib/plans'
 import { badge, banners, licenceFindings } from '../hooks/lib/licensing'
@@ -155,6 +156,57 @@ test(
     const after = (await read($, 'plans')) as Record<string, FlowPlan[]>
     expect(after[flowKey(Y)]?.[0]?.status).toBe('approved')
     expect(after[flowKey(X)]?.[0]?.status).toBe('pending')
+  },
+)
+
+describe('flow navigation', () => {
+  test('steps in proposal order and wraps; an unknown key starts at the first; no flows keeps it', async () => {
+    const all = appendPlan(appendPlan(appendPlan({}, plan('X v1', X)), plan('Y v1', Y)), plan('X v2', X))
+    expect(stepFlow(all, flowKey(Y), -1)).toBe(flowKey(X))
+    expect(stepFlow(all, flowKey(Y), 1)).toBe(flowKey(X))
+    expect(stepFlow(all, flowKey(X), 1)).toBe(flowKey(Y))
+    expect(stepFlow(all, 'update:nope', 1)).toBe(flowKey(X))
+    expect(stepFlow(all, null, -1)).toBe(flowKey(X))
+    expect(stepFlow({}, null, 1)).toBeNull()
+  })
+})
+
+test(
+  'through the engine: with two flows the arrows show the other one, and Approve acts on the one shown',
+  { plugins: [probe] },
+  async ($, on) => {
+    on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
+    on('tool.call', { tool: LIST }, async (_$, e) => catalog(e))
+
+    await $.tool.call(proposal(plan('Expiry notice', X)))
+    const single = await $.ui.mount({ plugin: 'flow-plan', surface: 'terminal', ...PANE })
+    expect(await single.find({ key: 'prev-flow' })).toBeUndefined()
+    await single.unmount()
+
+    await $.tool.call(proposal(plan('Fix approvals', Y)))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ plugin: 'flow-plan', surface, ...PANE })
+      expect(await ui.find({ type: 'Text', text: /Flow 2 of 2 · 1 other pending/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'Fix approvals' })).toBeDefined()
+      await ui.unmount()
+    }
+
+    const ui = await $.ui.mount({ plugin: 'flow-plan', surface: 'terminal', ...PANE })
+    await ui.press({ key: 'prev-flow' })
+    expect(await read($, 'active')).toBe(flowKey(X))
+    expect(await ui.find({ type: 'Text', text: 'Expiry notice' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Flow 1 of 2 · 1 other pending/ })).toBeDefined()
+    await ui.press({ key: 'acknowledge' })
+    await ui.press({ key: 'approve' })
+    expect(await ui.find({ type: 'Text', text: /Flow 1 of 2 · 1 other pending/ })).toBeDefined()
+    await ui.press({ key: 'next-flow' })
+    expect(await ui.find({ type: 'Text', text: 'Fix approvals' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Flow 2 of 2 $/ })).toBeDefined()
+    await ui.unmount()
+
+    const after = (await read($, 'plans')) as Record<string, FlowPlan[]>
+    expect(after[flowKey(X)]?.[0]?.status).toBe('approved')
+    expect(after[flowKey(Y)]?.[0]?.status).toBe('pending')
   },
 )
 

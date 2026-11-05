@@ -39,7 +39,15 @@ export const approve = (plans: Plans, key: string, index: number) => {
   return { plans: setStatus(plans, key, index, 'approved'), isNew }
 }
 
-export const targetLabel = (t: PlanTarget) =>
+// The flow key `by` steps from `at`, in proposal order, wrapping at either end. A key not in plans starts at the first.
+export const stepFlow = (plans: Plans, at: string | null, by: 1 | -1) => {
+  const keys = Object.keys(plans)
+  if (keys.length === 0) return at
+  const i = at === null ? -1 : keys.indexOf(at)
+  return i < 0 ? keys[0] ?? null : keys[(i + by + keys.length) % keys.length] ?? null
+}
+
+export const targetLabel =(t: PlanTarget) =>
   `${t.mode === 'create' ? `New flow: ${t.name}` : `Update: ${t.flowId}`}${t.env ? ` (env ${t.env})` : ''}`
 
 // A build tool's call as the gate reads it: the envelope's tool name plus the arguments it checks.

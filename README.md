@@ -23,7 +23,7 @@ flow-plan puts a design review in between. Claude proposes the flow as a plan in
 
 - **Plan before build.** Claude proposes every new flow, or change to an existing one, as a plan: trigger, actions with their connectors, Condition/Switch/loop branches, run-after and the key inputs.
 - **A designer-style sidebar.** In Claude Code Desktop, VS Code and mobile the plan is drawn as one picture that looks like the Power Automate designer: cards with connector chips, side-by-side Condition branches that rejoin, and dashed containers for Scope, Apply to each and Do until. The terminal gets a text version of the same plan. A **cards** style is also available.
-- **Approval per flow.** Each plan names the one flow it's for: a new flow by name, or an existing flow by ID. Approving it allows builds for that flow only. Every other create, update, edit or copy is blocked with a reason Claude can act on.
+- **Approval per flow.** Each plan names the one flow it's for: a new flow by name, or an existing flow by ID. Approving it allows builds for that flow only. Every other create, update, edit or copy is blocked with a reason Claude can act on. With more than one flow in a session, ◀ and ▶ in the pane step between them.
 - **Single-use create approval.** Once a new flow is created, the approval is used up. A second create with the same name needs a new plan. Updates to the flow just created stay allowed.
 - **Flow link after the build.** After a successful create, update or edit, the pane and Claude both get the maker-portal link to the flow's details page.
 - **Approve and Reject that talk to Claude.** Approve tells Claude it can build now. Reject takes an optional reason, and Claude gets it, so it can revise the plan.
@@ -71,6 +71,7 @@ Claude proposes the plan, the sidebar opens with it, and Claude stops. Review it
 
 | Button | What it does |
 |---|---|
+| **◀ / ▶** | Shown when the session has plans for more than one flow: steps between them. "Flow n of m" says where you are and how many others are pending |
 | **Approve** | Approves this version of the plan and tells Claude to build. Dimmed as **Approve (blocked)** while there are unfixed findings |
 | **Acknowledge warnings (n)** | Accepts the plan's warnings so it can be approved |
 | **Reject** | Opens a reason box. Press Enter to send it to Claude, or press Reject again to cancel |
@@ -98,11 +99,11 @@ Claude proposes the plan, the sidebar opens with it, and Claude stops. Review it
 | `hooks/lib/lint.ts` | The design checks |
 | `hooks/lib/flow-svg.ts` | The designer picture for Desktop, VS Code and mobile |
 | `types/index.d.ts` | Types for plans and the mod's state |
-| `tests/flow-plan.test.ts` | 71 unit tests |
+| `tests/flow-plan.test.ts` | 73 unit tests |
 
 ## Status
 
-Version 0.8.0. **71 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve.
+Version 0.8.0. **73 unit tests pass** (`claude plugin test .`). Live-checked in the terminal and Claude Code Desktop: plan before build, the per-flow gate, single-use create approval with the flow link, Reject with a reason, Plan mode, node details, the licence badges and banners in auto mode, and standard mode blocking Approve.
 
 Not yet checked live: the premium badge on an HTTP request trigger, the Details and Style buttons, and the designer picture in the light theme.
 

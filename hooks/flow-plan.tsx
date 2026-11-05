@@ -11,6 +11,7 @@ import {
   isTarget,
   patchVersion,
   planFor,
+  stepFlow,
   targetLabel,
 } from './lib/plans'
 import type { BuildCall } from './lib/plans'
@@ -332,6 +333,15 @@ export const register: Register = on => {
     }
     const { key, index, plan: current } = shown
 
+    // more than one flow this session: arrows step between them, in proposal order.
+    const all = await read($, plans)
+    const flows = Object.keys(all)
+    const waiting = flows.filter(k => k !== key && all[k]?.at(-1)?.status === 'pending').length
+    const go = async (by: 1 | -1) => {
+      await update($, active, at => stepFlow(all, at, by))
+      await update($, rejecting, () => false)
+    }
+
     const mode = await read($, style)
     const isContainer = (n: PlanNode) => (n.branches?.length ?? 0) > 0
 
@@ -576,6 +586,15 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        {flows.length > 1 && (
+          <Box key="flow-nav">
+            <Button key="prev-flow" label="◀" onPress={() => go(-1)} />
+            <Text key="flow-count">
+              {` Flow ${flows.indexOf(key) + 1} of ${flows.length}${waiting > 0 ? ` · ${waiting} other pending` : ''} `}
+            </Text>
+            <Button key="next-flow" label="▶" onPress={() => go(1)} />
+          </Box>
+        )}
         <Text bold>{current.title}</Text>
         <Text dimColor>{targetLabel(current.target)}</Text>
         <Text dimColor>Licence mode: {licenceMode}</Text>
